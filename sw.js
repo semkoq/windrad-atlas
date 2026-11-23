@@ -1,7 +1,7 @@
 /* Service Worker: macht den Windrad-Atlas installierbar und offline nutzbar.
    - App-Dateien und Anlagendaten: aus dem Speicher, im Hintergrund aktualisiert
    - Kartenkacheln: aus dem Netz, zuletzt gesehene werden für offline zwischengespeichert */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const APP_CACHE = 'atlas-app-' + VERSION;
 const TILE_CACHE = 'atlas-tiles-' + VERSION;
 const MAX_TILES = 1500;

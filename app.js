@@ -526,12 +526,28 @@ async function search(q) {
   }
 }
 
+function locateErrorText(err) {
+  if (err && err.code === 1) return 'Standort blockiert: Bitte Standort-Berechtigung für App und Chrome erlauben.';
+  if (err && err.code === 2) return 'Standort nicht verfügbar: Bitte den Standortdienst des Handys einschalten.';
+  if (err && err.code === 3) return 'Standortermittlung hat zu lange gedauert. Bitte im Freien erneut versuchen.';
+  return 'Standort konnte nicht ermittelt werden.';
+}
+
 function locate() {
   if (!navigator.geolocation) { toast('Standort wird von diesem Browser nicht unterstützt.'); return; }
+  const ok = (p) => state.map.setView([p.coords.latitude, p.coords.longitude], 11);
   navigator.geolocation.getCurrentPosition(
-    (p) => state.map.setView([p.coords.latitude, p.coords.longitude], 11),
-    () => toast('Standort konnte nicht ermittelt werden.'),
-    { enableHighAccuracy: false, timeout: 10000 }
+    ok,
+    (err) => {
+      // Bei Timeout oder fehlender Position einmal mit GPS (hohe Genauigkeit) und längerer Wartezeit erneut versuchen
+      if (err && (err.code === 2 || err.code === 3)) {
+        toast('Standort wird gesucht …');
+        navigator.geolocation.getCurrentPosition(ok, (e2) => toast(locateErrorText(e2)), { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+      } else {
+        toast(locateErrorText(err));
+      }
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
   );
 }
 
