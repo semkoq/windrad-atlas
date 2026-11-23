@@ -517,7 +517,45 @@ function bindUi() {
   });
 }
 
+/* ---------------- Installierbare App (PWA) ---------------- */
+
+function setupInstall() {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker nicht registriert:', e));
+  }
+  if (standalone) return; // läuft schon als App
+
+  const box = $('#install');
+  const btn = $('#btnInstall');
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let deferred = null;
+
+  if (isIos) {
+    box.hidden = false;
+    btn.addEventListener('click', () => { $('#installIos').hidden = false; btn.hidden = true; });
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferred = e;
+    box.hidden = false;
+  });
+  btn.addEventListener('click', async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    const { outcome } = await deferred.userChoice;
+    deferred = null;
+    if (outcome === 'accepted') box.hidden = true;
+  });
+  window.addEventListener('appinstalled', () => {
+    box.hidden = true;
+    toast('Windrad-Atlas ist installiert – du findest ihn auf deinem Startbildschirm.');
+  });
+}
+
 async function main() {
+  setupInstall();
   bindUi();
   renderChips();
   if (!window.L || !L.markerClusterGroup) {

@@ -16,7 +16,15 @@ Moderne Web-App mit allen **Vestas-Windenergieanlagen an Land in Deutschland**
 - Export als **KML** (Import in Google My Maps / Google Earth) und GeoJSON
 - Am Handy als Bottom-Sheet bedienbar
 
-## Starten
+## Als App aufs Handy
+Online unter **https://semkoq.github.io/windrad-atlas/** – die Seite ist eine installierbare App (PWA):
+- **Android (Chrome):** Button „Installieren“ in der App, oder ⋮-Menü → „App installieren“
+- **iPhone (Safari):** Teilen → „Zum Home-Bildschirm“
+
+Danach startet sie mit eigenem Symbol im Vollbild; App und Anlagendaten funktionieren auch offline
+(Kartenbilder nur für bereits angesehene Gebiete).
+
+## Starten (lokal)
 ```powershell
 python -m http.server 8080
 ```
