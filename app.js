@@ -300,11 +300,107 @@ function clearSelection() {
   state.selected = null;
 }
 
+function closeDetail() {
+  $('#detail').hidden = true;
+  $('#panel').classList.remove('show-detail');
+  clearSelection();
+}
+
+/* ---------------- Handy: Bottom-Sheet ---------------- */
+
+const MQ = matchMedia('(max-width: 760px)');
+const isMobile = () => MQ.matches;
+
+function sheetHeights() {
+  const vh = window.innerHeight;
+  return { peek: 168, half: Math.round(vh * 0.5), full: vh - 76 };
+}
+
+function applySheetHeight(h) {
+  document.getElementById('app').style.setProperty('--sheet-h', h + 'px');
+}
+
+function setSheet(name) {
+  state.sheet = name;
+  $('#panel').dataset.sheet = name;
+  applySheetHeight(sheetHeights()[name]);
+}
+
+function setupSheet() {
+  const panel = $('#panel');
+  const handle = $('#sheetHandle');
+  let startY = 0, startH = 0, dragging = false, moved = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (!isMobile() || e.target.closest('#sheetToggle')) return;
+    dragging = true; moved = 0;
+    startY = e.clientY; startH = panel.getBoundingClientRect().height;
+    panel.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dy = startY - e.clientY;
+    moved = Math.max(moved, Math.abs(dy));
+    const H = sheetHeights();
+    applySheetHeight(Math.min(H.full, Math.max(110, startH + dy)));
+  });
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    panel.classList.remove('dragging');
+    if (moved < 6) { setSheet(state.sheet === 'peek' ? 'half' : 'peek'); return; } // Tippen
+    const h = panel.getBoundingClientRect().height;
+    const H = sheetHeights();
+    const fast = e.clientY - startY; // nach unten positiv
+    let target = Object.entries(H).sort((a, b) => Math.abs(a[1] - h) - Math.abs(b[1] - h))[0][0];
+    if (fast > 80 && target === state.sheet) target = state.sheet === 'full' ? 'half' : 'peek';
+    if (fast < -80 && target === state.sheet) target = state.sheet === 'peek' ? 'half' : 'full';
+    setSheet(target);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+
+  // Suchfeld: am Handy oben über der Karte, am Laptop im Seitenbereich
+  const form = $('#searchForm');
+  const place = () => {
+    if (isMobile()) {
+      $('#mTop').prepend(form);
+      setSheet(state.sheet || 'half');
+    } else {
+      $('#panelBody').insertBefore(form, $('#panelBody .stats'));
+      document.getElementById('app').style.removeProperty('--sheet-h');
+      if (!$('#detail').hidden) closeDetail();
+    }
+    setTimeout(() => state.map && state.map.invalidateSize(), 300);
+  };
+  MQ.addEventListener('change', place);
+  window.addEventListener('resize', () => { if (isMobile() && state.sheet) setSheet(state.sheet); });
+  place();
+}
+
 function openInfo(t) {
   clearSelection();
   const m = getMarker(t);
   m.setIcon(PIN_ICON_SEL);
   state.selected = t.id;
+
+  // Handy: Details unten im Sheet statt Popup über der Karte
+  if (isMobile()) {
+    state.map.closePopup();
+    $('#detailBody').innerHTML = infoHtml(t);
+    $('#detail').hidden = false;
+    $('#panel').classList.add('show-detail');
+    $('#panelBody').scrollTop = 0;
+    setSheet('half');
+    // Windrad mittig im sichtbaren Kartenbereich über dem Sheet zeigen
+    const z = Math.max(state.map.getZoom(), 15);
+    const sheetH = sheetHeights().half;
+    const pt = state.map.project([t.lat, t.lng], z).add([0, sheetH / 2 - 30]);
+    state.map.setView(state.map.unproject(pt, z), z, { animate: true });
+    return;
+  }
+
   const narrow = window.innerWidth < 500;
   m.unbindPopup().bindPopup(infoHtml(t), {
     maxWidth: narrow ? 280 : 320, minWidth: narrow ? 260 : 310,
@@ -492,22 +588,29 @@ function bindUi() {
   const openFromList = (li) => {
     const t = li && state.turbines.get(li.dataset.id);
     if (!t) return;
+    if (isMobile()) { openInfo(t); return; }
     const m = getMarker(t);
     state.clusterer.zoomToShowLayer(m, () => {
       if (state.map.getZoom() < 15) state.map.setView([t.lat, t.lng], 15);
       openInfo(t);
     });
-    if (matchMedia('(max-width: 760px)').matches) $('#panel').classList.add('collapsed');
   };
   $('#list').addEventListener('click', (e) => openFromList(e.target.closest('li[data-id]')));
   $('#list').addEventListener('keydown', (e) => { if (e.key === 'Enter') openFromList(e.target.closest('li[data-id]')); });
-  $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); search($('#searchInput').value); $('#searchInput').blur(); });
+  $('#searchForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    search($('#searchInput').value);
+    $('#searchInput').blur();
+    if (isMobile()) { closeDetail(); setSheet('peek'); }
+  });
   $('#regionSelect').addEventListener('change', (e) => setRegion(e.target.value));
   $('#btnLocate').addEventListener('click', locate);
   $('#btnFit').addEventListener('click', fitSelection);
   $('#btnKml').addEventListener('click', exportKml);
   $('#btnGeojson').addEventListener('click', exportGeoJson);
-  $('#sheetToggle').addEventListener('click', () => $('#panel').classList.toggle('collapsed'));
+  $('#sheetToggle').addEventListener('click', () => setSheet(state.sheet === 'full' ? 'peek' : state.sheet === 'peek' ? 'half' : 'full'));
+  $('#detailBack').addEventListener('click', () => { closeDetail(); setSheet('half'); });
+  $('#fabLocate').addEventListener('click', locate);
   document.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-copy]');
     if (!a) return;
@@ -563,6 +666,8 @@ async function main() {
     return;
   }
   initMap();
+  setupSheet();
+  state.map.on('click', () => { if (isMobile() && !$('#detail').hidden) { closeDetail(); setSheet('peek'); } });
   await loadBundle();
 }
 
