@@ -35,6 +35,8 @@ const state = {
   family: 'all',
   region: 'all',         // Bundesland
   selected: null,
+  sheet: null,           // Bottom-Sheet-Stufe (Handy): map | peek | half | full
+  prevSheet: 'half',     // Stufe vor "Karte Vollbild"
   busy: 0,
 };
 
@@ -313,7 +315,7 @@ const isMobile = () => MQ.matches;
 
 function sheetHeights() {
   const vh = window.innerHeight;
-  return { peek: 168, half: Math.round(vh * 0.5), full: vh - 76 };
+  return { map: 65, peek: 168, half: Math.round(vh * 0.5), full: vh - 76 };
 }
 
 function applySheetHeight(h) {
@@ -321,10 +323,18 @@ function applySheetHeight(h) {
 }
 
 function setSheet(name) {
+  if (name === 'map' && state.sheet && state.sheet !== 'map') state.prevSheet = state.sheet;
   state.sheet = name;
   $('#panel').dataset.sheet = name;
   applySheetHeight(sheetHeights()[name]);
+  const fab = $('#fabMap');
+  const isMap = name === 'map';
+  fab.classList.toggle('is-map', isMap);
+  fab.setAttribute('aria-label', isMap ? 'Karte verkleinern' : 'Karte auf Vollbild');
 }
+
+// Aus "Karte Vollbild" zurück auf die zuvor genutzte Stufe
+const leaveMap = () => setSheet(state.prevSheet || 'half');
 
 function setupSheet() {
   const panel = $('#panel');
@@ -343,19 +353,23 @@ function setupSheet() {
     const dy = startY - e.clientY;
     moved = Math.max(moved, Math.abs(dy));
     const H = sheetHeights();
-    applySheetHeight(Math.min(H.full, Math.max(110, startH + dy)));
+    applySheetHeight(Math.min(H.full, Math.max(H.map, startH + dy)));
   });
   const end = (e) => {
     if (!dragging) return;
     dragging = false;
     panel.classList.remove('dragging');
-    if (moved < 6) { setSheet(state.sheet === 'peek' ? 'half' : 'peek'); return; } // Tippen
+    if (moved < 6) { // Tippen
+      if (state.sheet === 'map') leaveMap(); else setSheet(state.sheet === 'peek' ? 'half' : 'peek');
+      return;
+    }
     const h = panel.getBoundingClientRect().height;
     const H = sheetHeights();
     const fast = e.clientY - startY; // nach unten positiv
     let target = Object.entries(H).sort((a, b) => Math.abs(a[1] - h) - Math.abs(b[1] - h))[0][0];
-    if (fast > 80 && target === state.sheet) target = state.sheet === 'full' ? 'half' : 'peek';
-    if (fast < -80 && target === state.sheet) target = state.sheet === 'peek' ? 'half' : 'full';
+    if (fast > 80 && target === state.sheet) target = state.sheet === 'full' ? 'half' : state.sheet === 'half' ? 'peek' : 'map';
+    if (fast < -80 && target === state.sheet) target = state.sheet === 'map' ? state.prevSheet : state.sheet === 'peek' ? 'half' : 'full';
+    if (target === 'map' && state.sheet === 'map') { setSheet('map'); return; }
     setSheet(target);
   };
   handle.addEventListener('pointerup', end);
@@ -608,7 +622,11 @@ function bindUi() {
   $('#btnFit').addEventListener('click', fitSelection);
   $('#btnKml').addEventListener('click', exportKml);
   $('#btnGeojson').addEventListener('click', exportGeoJson);
-  $('#sheetToggle').addEventListener('click', () => setSheet(state.sheet === 'full' ? 'peek' : state.sheet === 'peek' ? 'half' : 'full'));
+  $('#sheetToggle').addEventListener('click', () => {
+    if (state.sheet === 'map') return leaveMap();
+    setSheet(state.sheet === 'full' ? 'peek' : state.sheet === 'peek' ? 'half' : 'full');
+  });
+  $('#fabMap').addEventListener('click', () => (state.sheet === 'map' ? leaveMap() : setSheet('map')));
   $('#detailBack').addEventListener('click', () => { closeDetail(); setSheet('half'); });
   $('#fabLocate').addEventListener('click', locate);
   document.addEventListener('click', async (e) => {
