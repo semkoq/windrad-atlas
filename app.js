@@ -625,7 +625,13 @@ function bindUi() {
 function setupInstall() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker nicht registriert:', e));
+    // Neue App-Version: einmal neu laden, damit sie sofort aktiv ist
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch((e) => console.warn('Service Worker nicht registriert:', e));
   }
   if (standalone) return; // läuft schon als App
 
