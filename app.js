@@ -51,12 +51,12 @@ function setStatus(text, kind = '') {
 }
 
 let toastTimer;
-function toast(text) {
+function toast(text, ms = 3800) {
   const el = $('#toast');
   el.textContent = text;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3800);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 
 function busy(delta) {
@@ -533,6 +533,20 @@ function locateErrorText(err) {
   return 'Standort konnte nicht ermittelt werden.';
 }
 
+// Technische Angaben zur Fehlersuche (Fehlercode, Browser-Meldung, Berechtigungsstatus, Anzeigemodus)
+async function locateDiag(err) {
+  let perm = '?';
+  try { perm = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { /* nicht unterstützt */ }
+  const mode = ['standalone', 'fullscreen', 'minimal-ui'].some((m) => matchMedia(`(display-mode: ${m})`).matches) ? 'App' : 'Tab';
+  const msg = err && err.message ? err.message.slice(0, 60) : '-';
+  return `[Code ${err ? err.code : '?'} · ${msg} · Status ${perm} · ${mode} · ${isSecureContext ? 'https' : 'unsicher'}]`;
+}
+
+async function locateFail(err) {
+  const text = locateErrorText(err) + ' ' + (await locateDiag(err));
+  toast(text, 12000);
+}
+
 function locate() {
   if (!navigator.geolocation) { toast('Standort wird von diesem Browser nicht unterstützt.'); return; }
   const ok = (p) => state.map.setView([p.coords.latitude, p.coords.longitude], 11);
@@ -542,9 +556,9 @@ function locate() {
       // Bei Timeout oder fehlender Position einmal mit GPS (hohe Genauigkeit) und längerer Wartezeit erneut versuchen
       if (err && (err.code === 2 || err.code === 3)) {
         toast('Standort wird gesucht …');
-        navigator.geolocation.getCurrentPosition(ok, (e2) => toast(locateErrorText(e2)), { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+        navigator.geolocation.getCurrentPosition(ok, locateFail, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
       } else {
-        toast(locateErrorText(err));
+        locateFail(err);
       }
     },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
